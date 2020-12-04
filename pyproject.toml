@@ -6,6 +6,9 @@ authors = ["bagashvilit <bagashvilit@allegheny.edu>"]
 
 [tool.poetry.dependencies]
 python = "^3.7"
+numpy = "^1.19.4"
+PyDriller = "^1.15.4"
+PyGithub = "^1.54"
 
 [tool.poetry.dev-dependencies]
 pytest = "^5.2"
