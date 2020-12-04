@@ -43,6 +43,25 @@ def search_repos(token,languages):
             }
             repo_list.append(repos_stats)
     return repo_list
+    
+def parse_for_type(name):
+    """Parse through file name and returns its format."""
+    if "." in name:
+        file_type, name = os.path.splitext(name)
+        file_type += ""
+        return name
+    return name
+
+def get_file_formats(files):
+    """Create a list of unique file formats."""
+    formats = []
+    for file in files:
+        current_format = parse_for_type(file)
+        if current_format not in formats:
+            formats.append(current_format)
+    # sort data to ensure consistency for test
+    formats = sorted(formats)
+    return formats
 
 def final_status(statuses,completion):
     fails = ["error","failure","cancelled","timed_out","action_required","startup_failure"]
@@ -123,3 +142,60 @@ def status_info(token,repos):
                 continue
             
     return checks_info
+
+def features(repos):
+    """Create a list of dictionaries that contains commit info."""
+
+    commit_list = []
+    for repo in repos:
+        commits = RepositoryMining(repo).traverse_commits()
+
+        for commit in commits:
+
+            line_added = 0
+            line_removed = 0
+            line_of_code = 0
+            token_count = 0
+            methods = []
+            filename = []
+            change_type = []
+
+            for item in commit.modifications:
+                # modifications is a list of files and its changes
+                line_added += item.added
+                line_removed += item.removed
+                if item.nloc is not None:
+                    line_of_code += item.nloc
+                if item.token_count is not None:
+                    token_count += item.token_count
+                for method in item.changed_methods:
+                    methods.append(method.name)
+                filename.append(item.filename)
+                change_type.append(item.change_type.name)
+
+            single_commit_dict = {
+                "project_name":commit.project_name,
+                "hash": commit.hash,
+                "commit_msg": commit.msg,
+                "merge": commit.merge,
+                "line_added": line_added,
+                "line_removed": line_removed,
+                "churns": (line_added - line_removed),
+                "lines_of_code": line_of_code,
+                "dmm_unit_size": commit.dmm_unit_size,
+                "dmm_unit_complexity": commit.dmm_unit_complexity,
+                "dmm_unit_interfacing": commit.dmm_unit_interfacing,
+                "token_count": token_count,
+                "num_modified_methods": len(methods),
+                "num_modified_files": len(filename),
+                "file_names": filename,
+                "num_file_formats": len(get_file_formats(filename)),
+                "file_formats": get_file_formats(filename),
+                "num_change_type": len(get_file_formats(change_type)),
+                "change_types": get_file_formats(change_type),
+                
+            }
+
+            commit_list.append(single_commit_dict)
+
+    return commit_list
