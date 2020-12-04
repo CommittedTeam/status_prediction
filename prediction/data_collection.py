@@ -59,3 +59,67 @@ def final_status(statuses,completion):
         final_status.append("pass")
 
     return final_status[0]
+
+
+def status_info(token,repos):
+    githb = Github(token)
+    checks_info = []
+    for reponame in repos:
+        repo = githb.get_repo(reponame)
+        commits = repo.get_commits()
+        workflows = repo.get_workflow_runs(event="push")
+
+        for commit in commits.reversed:
+            try:
+                statuses = []
+                workflows_stats = []
+                checks = []
+                completion = []
+
+                status = commit.get_combined_status()
+                if status.statuses:
+                    statuses.append(status.state)
+
+                for workflow in workflows.reversed:
+                    if workflow.head_sha == commit.sha:
+
+                        conclusion = workflow.conclusion
+                        if conclusion is not None:
+                            workflows_stats.append(conclusion)
+
+                
+                check_suites = commit.get_check_runs()
+                for check_suite in check_suites.reversed:
+                    check_conclusion = check_suite.conclusion
+                    if not workflows_stats and check_conclusion is not None:
+                        checks.append(check_conclusion)
+                    if check_conclusion is not None and check_suite.app.name != "GitHub Actions":
+                        checks.append(check_conclusion)
+
+                    check_suite_completion = check_suite.status
+                    if check_suite_completion == "completed":
+                        completion.append(check_suite_completion)
+                    elif check_suite_completion == "in_progress":
+                        completion.append(check_suite_completion)
+                        checks.append("pending")
+
+                checks = {
+
+                    "commit_sha": commit.sha,
+                    "completion_status": completion,
+                    "statuses":statuses,
+                    "workflows": workflows_stats,
+                    "checks": checks,
+                    "combined": final_status((statuses + checks + workflows_stats),completion)
+                }
+                
+                checks_info.append(checks)
+
+            except StopIteration:
+                break
+
+            except RateLimitExceededException:
+                api_wait(githb)
+                continue
+            
+    return checks_info
