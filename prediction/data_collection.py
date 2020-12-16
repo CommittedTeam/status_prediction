@@ -39,7 +39,6 @@ def search_repos(token,languages):
                 "language": repo.language,
                 "project_name": repo.full_name,
                 "total_commits": repo.get_commits().totalCount,
-                "html_url": repo.html_url
             }
             repo_list.append(repos_stats)
     return repo_list
@@ -63,11 +62,11 @@ def get_file_formats(files):
     formats = sorted(formats)
     return formats
 
-def final_status(statuses,completion):
+def final_status(statuses):
     fails = ["error","failure","cancelled","timed_out","action_required","startup_failure"]
     final_status = []
-    if not statuses and not completion:
-        final_status.append("N/A")
+    if not statuses:
+        final_status.append("NA")
     for status in fails:
         if status in statuses:
             final_status.append("fail")
@@ -80,60 +79,66 @@ def final_status(statuses,completion):
     return final_status[0]
 
 
-def status_info(token,repos):
+def commit_info(token,repos):
     githb = Github(token)
     checks_info = []
     for reponame in repos:
         repo = githb.get_repo(reponame)
         commits = repo.get_commits()
-        workflows = repo.get_workflow_runs(event="push")
-
-        for commit in commits.reversed:
+        
+        for commit in commits:
             try:
                 statuses = []
-                workflows_stats = []
                 checks = []
-                completion = []
+                file_names = []
+                is_merged = []
+                
+                
+                # files stats
+                for commit_file in commit.files:
+                    file_names.append(commit_file.filename)
 
+                # pull request stats
+                for pull in commit.get_pulls():
+                    is_merged.append(pull.merged)
+                if not is_merged:
+                    is_merged.append(False)
+
+                # Commit Status
                 status = commit.get_combined_status()
                 if status.statuses:
                     statuses.append(status.state)
 
-                for workflow in workflows.reversed:
-                    if workflow.head_sha == commit.sha:
-
-                        conclusion = workflow.conclusion
-                        if conclusion is not None:
-                            workflows_stats.append(conclusion)
-
-                
-                check_suites = commit.get_check_runs()
-                for check_suite in check_suites.reversed:
-                    check_conclusion = check_suite.conclusion
-                    if not workflows_stats and check_conclusion is not None:
+                # Check run
+                check_runs = commit.get_check_suites()
+                for check_run in check_runs:
+                    check_conclusion = check_run.conclusion
+                    if check_conclusion is not None:
                         checks.append(check_conclusion)
-                    if check_conclusion is not None and check_suite.app.name != "GitHub Actions":
-                        checks.append(check_conclusion)
-
-                    check_suite_completion = check_suite.status
-                    if check_suite_completion == "completed":
-                        completion.append(check_suite_completion)
-                    elif check_suite_completion == "in_progress":
-                        completion.append(check_suite_completion)
+                    if check_run.status == "in_progress":
                         checks.append("pending")
 
                 checks = {
-
+                    "repo_name": repo.full_name,
+                    "repo_language": repo.language,
+                    "total_commits": repo.get_commits().totalCount,
                     "commit_sha": commit.sha,
-                    "completion_status": completion,
+                    "commit_msg": commit.commit.message,
+                    "num_parent_commits": len(commit.parents),
+                    "merged_from_pull": is_merged,
+                    "lines_added": commit.stats.additions,
+                    "lines_deleted": commit.stats.deletions,
+                    "lines_total": commit.stats.total,
+                    "file_names": file_names,
+                    "files_total": len(file_names),
+                    "unique_file_formats": get_file_formats(file_names),
+                    "num_unique_file_formats": len(get_file_formats(file_names)),
                     "statuses":statuses,
-                    "workflows": workflows_stats,
                     "checks": checks,
-                    "combined": final_status((statuses + checks + workflows_stats),completion)
+                    "combined": final_status(statuses + checks),
                 }
-                
                 checks_info.append(checks)
-
+                
             except StopIteration:
                 break
 
@@ -143,59 +148,5 @@ def status_info(token,repos):
             
     return checks_info
 
-def features(repos):
-    """Create a list of dictionaries that contains commit info."""
 
-    commit_list = []
-    for repo in repos:
-        commits = RepositoryMining(repo).traverse_commits()
 
-        for commit in commits:
-
-            line_added = 0
-            line_removed = 0
-            line_of_code = 0
-            token_count = 0
-            methods = []
-            filename = []
-            change_type = []
-
-            for item in commit.modifications:
-                # modifications is a list of files and its changes
-                line_added += item.added
-                line_removed += item.removed
-                if item.nloc is not None:
-                    line_of_code += item.nloc
-                if item.token_count is not None:
-                    token_count += item.token_count
-                for method in item.changed_methods:
-                    methods.append(method.name)
-                filename.append(item.filename)
-                change_type.append(item.change_type.name)
-
-            single_commit_dict = {
-                "project_name":commit.project_name,
-                "hash": commit.hash,
-                "commit_msg": commit.msg,
-                "merge": commit.merge,
-                "line_added": line_added,
-                "line_removed": line_removed,
-                "churns": (line_added - line_removed),
-                "lines_of_code": line_of_code,
-                "dmm_unit_size": commit.dmm_unit_size,
-                "dmm_unit_complexity": commit.dmm_unit_complexity,
-                "dmm_unit_interfacing": commit.dmm_unit_interfacing,
-                "token_count": token_count,
-                "num_modified_methods": len(methods),
-                "num_modified_files": len(filename),
-                "file_names": filename,
-                "num_file_formats": len(get_file_formats(filename)),
-                "file_formats": get_file_formats(filename),
-                "num_change_type": len(get_file_formats(change_type)),
-                "change_types": get_file_formats(change_type),
-                
-            }
-
-            commit_list.append(single_commit_dict)
-
-    return commit_list
